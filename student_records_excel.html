@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Data Manager & Excel Exporter</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            },
+            surface: {
+              800: '#1e2430',
+              850: '#161b26',
+              900: '#0f131d',
+              950: '#0a0d14',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- SheetJS (xlsx.full.min.js) for Native Excel Export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #0a0d14;
+      color: #e2e8f0;
+    }
+
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f131d;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #273043;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3c4864;
+    }
+
+    .glass-card {
+      background: rgba(22, 27, 38, 0.88);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-emerald-600 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-40 border-b border-white/10 bg-surface-950/90 backdrop-blur-md px-4 sm:px-8 py-3.5 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+        <i data-lucide="file-spreadsheet" class="w-6 h-6 text-white"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="text-lg font-extrabold tracking-tight text-white">Edu<span class="text-emerald-400">Sheet</span></span>
+          <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold">
+            Excel Generator
+          </span>
+        </div>
+        <p class="text-xs text-slate-400">Manage student records & export seamlessly to .xlsx</p>
+      </div>
+    </div>
+
+    <!-- Quick Action Bar -->
+    <div class="flex items-center space-x-2 sm:space-x-3">
+      <button onclick="loadSampleData()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface-850 hover:bg-surface-800 text-slate-300 border border-white/10 flex items-center gap-1.5 transition">
+        <i data-lucide="database" class="w-3.5 h-3.5 text-indigo-400"></i>
+        <span class="hidden sm:inline">Load Sample Data</span>
+      </button>
+
+      <button onclick="clearAllRecords()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 flex items-center gap-1.5 transition">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">Clear All</span>
+      </button>
+
+      <!-- Excel Export Button -->
+      <button onclick="exportToExcel()" class="px-4 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all transform active:scale-95">
+        <i data-lucide="download" class="w-4 h-4"></i>
+        <span>Download Excel (.xlsx)</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN BODY -->
+  <main class="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- KPI / STATS BAR -->
+    <section class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex items-center space-x-4">
+        <div class="p-3 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+          <i data-lucide="users" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Students</p>
+          <p class="text-2xl font-extrabold text-white font-mono-code" id="statTotalStudents">0</p>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex items-center space-x-4">
+        <div class="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <i data-lucide="award" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Average CGPA</p>
+          <p class="text-2xl font-extrabold text-emerald-400 font-mono-code" id="statAvgCgpa">0.00</p>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex items-center space-x-4">
+        <div class="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+          <i data-lucide="star" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Highest CGPA</p>
+          <p class="text-2xl font-extrabold text-purple-400 font-mono-code" id="statMaxCgpa">0.00</p>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex items-center space-x-4">
+        <div class="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <i data-lucide="building" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Colleges</p>
+          <p class="text-2xl font-extrabold text-amber-400 font-mono-code" id="statCollegesCount">0</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- INPUT FORM / ENTRY SECTION -->
+    <section class="glass-card rounded-2xl p-5 sm:p-6 border border-white/10 shadow-xl">
+      <div class="flex items-center justify-between pb-4 border-b border-white/10 mb-5">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="user-plus" class="w-5 h-5 text-emerald-400"></i>
+          <h2 class="text-base font-bold text-white" id="formTitle">Add New Student Record</h2>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="editIndicator" class="hidden text-xs px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 font-medium">
+            Editing Mode
+          </span>
+          <button id="cancelEditBtn" onclick="cancelEdit()" class="hidden px-2.5 py-1 text-xs font-semibold rounded-md bg-slate-800 text-slate-300 hover:text-white transition">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <form id="studentForm" onsubmit="handleFormSubmit(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <input type="hidden" id="editRowId" value="">
+
+        <!-- Name Input -->
+        <div class="space-y-1.5 lg:col-span-1 sm:col-span-1">
+          <label for="inputName" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="user" class="w-3.5 h-3.5 text-slate-400"></i> Student Name *
+          </label>
+          <input 
+            type="text" 
+            id="inputName" 
+            required 
+            placeholder="e.g. Arjun Sharma" 
+            class="w-full bg-surface-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+          >
+        </div>
+
+        <!-- Branch Input -->
+        <div class="space-y-1.5 lg:col-span-1 sm:col-span-1">
+          <label for="inputBranch" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="git-branch" class="w-3.5 h-3.5 text-slate-400"></i> Branch *
+          </label>
+          <input 
+            type="text" 
+            id="inputBranch" 
+            required 
+            placeholder="e.g. Computer Science" 
+            class="w-full bg-surface-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+          >
+        </div>
+
+        <!-- College Input -->
+        <div class="space-y-1.5 lg:col-span-2 sm:col-span-2">
+          <label for="inputCollege" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="school" class="w-3.5 h-3.5 text-slate-400"></i> College / University *
+          </label>
+          <input 
+            type="text" 
+            id="inputCollege" 
+            required 
+            placeholder="e.g. National Institute of Technology" 
+            class="w-full bg-surface-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+          >
+        </div>
+
+        <!-- CGPA Input & Submit Button Group -->
+        <div class="flex space-x-2 lg:col-span-1 sm:col-span-2">
+          <div class="space-y-1.5 flex-1">
+            <label for="inputCgpa" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="percent" class="w-3.5 h-3.5 text-slate-400"></i> CGPA *
+            </label>
+            <input 
+              type="number" 
+              id="inputCgpa" 
+              required 
+              min="0.0" 
+              max="10.0" 
+              step="0.01" 
+              placeholder="e.g. 9.15" 
+              class="w-full bg-surface-900 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white font-mono-code placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+            >
+          </div>
+
+          <div class="pt-6">
+            <button 
+              type="submit" 
+              id="submitBtn" 
+              class="h-[42px] px-4 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition-all active:scale-95 whitespace-nowrap"
+            >
+              <i data-lucide="plus-circle" class="w-4 h-4" id="submitIcon"></i>
+              <span id="submitText">Add Row</span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <!-- TABLE & SEARCH / FILTER SECTION -->
+    <section class="glass-card rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
+      
+      <!-- Table Filter Header -->
+      <div class="p-4 sm:p-5 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="table" class="w-4 h-4 text-emerald-400"></i>
+            Staged Records Queue (<span id="recordCount">0</span>)
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">All entries will be included in the exported Excel spreadsheet.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- Search box -->
+          <div class="relative min-w-[220px]">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input 
+              type="text" 
+              id="searchInput" 
+              oninput="renderTable()" 
+              placeholder="Search name, branch, college..." 
+              class="w-full bg-surface-900 border border-white/10 rounded-xl pl-9 pr-3.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            >
+          </div>
+
+          <!-- Sort dropdown -->
+          <select id="sortBy" onchange="renderTable()" class="bg-surface-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-emerald-500">
+            <option value="newest">Sort: Newly Added</option>
+            <option value="name_asc">Name (A → Z)</option>
+            <option value="cgpa_desc">CGPA (Highest First)</option>
+            <option value="cgpa_asc">CGPA (Lowest First)</option>
+            <option value="college_asc">College (A → Z)</option>
+          </select>
+
+          <!-- Export CSV as alternate option -->
+          <button onclick="exportToCsv()" title="Export CSV" class="p-2 rounded-xl bg-surface-900 hover:bg-surface-850 text-slate-300 border border-white/10 transition text-xs flex items-center gap-1.5 font-medium">
+            <i data-lucide="file-text" class="w-3.5 h-3.5 text-cyan-400"></i>
+            <span class="hidden sm:inline">CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Table View -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-white/10 bg-surface-900/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <th class="py-3 px-4 w-12 text-center">#</th>
+              <th class="py-3 px-4">Student Name</th>
+              <th class="py-3 px-4">Branch</th>
+              <th class="py-3 px-4">College</th>
+              <th class="py-3 px-4 text-center">CGPA</th>
+              <th class="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-white/5 text-sm">
+            <!-- Rows dynamically rendered here -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty State Container -->
+      <div id="emptyState" class="py-16 flex flex-col items-center justify-center text-center px-4">
+        <div class="h-16 w-16 rounded-full bg-surface-900 border border-white/10 flex items-center justify-center text-slate-500 mb-4">
+          <i data-lucide="folder-open" class="w-8 h-8"></i>
+        </div>
+        <h4 class="text-base font-bold text-white">No Student Records Yet</h4>
+        <p class="text-xs text-slate-400 max-w-sm mt-1 mb-5">
+          Enter multiple students above and click "Add Row", or load pre-populated sample records to test immediately.
+        </p>
+        <button onclick="loadSampleData()" class="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-2">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+          Load 5 Demo Records
+        </button>
+      </div>
+
+      <!-- Footer Bar inside table -->
+      <div class="p-3.5 bg-surface-900/40 border-t border-white/5 flex items-center justify-between text-xs text-slate-400 px-5">
+        <div>Showing <span id="visibleCount" class="font-mono-code text-white">0</span> records</div>
+        <div class="flex items-center gap-3 font-mono-code text-[11px]">
+          <span>Format: <strong class="text-emerald-400">Microsoft Excel OpenXML (.xlsx)</strong></span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    // Storage Key
+    const STORAGE_KEY = 'edusheet_students_v1';
+
+    // State
+    let students = [];
+
+    // Load from local storage or empty
+    function loadFromStorage() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        try {
+          students = JSON.parse(raw);
+        } catch (e) {
+          students = [];
+        }
+      }
+    }
+
+    function saveToStorage() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+      updateStats();
+    }
+
+    // Toast Utility
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      const colors = {
+        success: 'border-emerald-500/40 bg-surface-900 text-emerald-400',
+        info: 'border-blue-500/40 bg-surface-900 text-blue-400',
+        warning: 'border-amber-500/40 bg-surface-900 text-amber-400',
+        error: 'border-rose-500/40 bg-surface-900 text-rose-400'
+      };
+
+      toast.className = `p-3.5 rounded-xl border shadow-xl flex items-center space-x-2.5 text-xs font-semibold backdrop-blur-md transform transition-all duration-300 translate-y-4 opacity-0 pointer-events-auto ${colors[type] || colors.success}`;
+      toast.innerHTML = `
+        <i data-lucide="${type === 'error' ? 'alert-triangle' : 'check-circle-2'}" class="w-4 h-4"></i>
+        <span class="text-slate-200">${message}</span>
+      `;
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      // Animate in
+      setTimeout(() => {
+        toast.classList.remove('translate-y-4', 'opacity-0');
+      }, 10);
+
+      // Dismiss
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-4');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Sample Records
+    function loadSampleData() {
+      const sample = [
+        { id: 'rec_' + Date.now() + '_1', name: 'Aarav Patel', branch: 'Computer Science & Engg', college: 'Indian Institute of Technology, Bombay', cgpa: 9.42 },
+        { id: 'rec_' + Date.now() + '_2', name: 'Sneha Rao', branch: 'Electronics & Communication', college: 'National Institute of Technology, Surathkal', cgpa: 8.85 },
+        { id: 'rec_' + Date.now() + '_3', name: 'Vikramaditya Verma', branch: 'Mechanical Engineering', college: 'BITS Pilani', cgpa: 7.90 },
+        { id: 'rec_' + Date.now() + '_4', name: 'Pooja Iyer', branch: 'Data Science & AI', college: 'Delhi Technological University', cgpa: 9.78 },
+        { id: 'rec_' + Date.now() + '_5', name: 'Rohan Deshmukh', branch: 'Information Technology', college: 'College of Engineering, Pune', cgpa: 8.40 }
+      ];
+
+      students = [...students, ...sample];
+      saveToStorage();
+      renderTable();
+      showToast(`Added ${sample.length} demo records successfully!`, 'info');
+    }
+
+    // Clear All Records
+    function clearAllRecords() {
+      if (students.length === 0) {
+        showToast('No records to clear.', 'warning');
+        return;
+      }
+      if (confirm('Are you sure you want to clear all student records? This cannot be undone.')) {
+        students = [];
+        saveToStorage();
+        cancelEdit();
+        renderTable();
+        showToast('All records cleared.', 'error');
+      }
+    }
+
+    // Form Handling (Add / Update)
+    function handleFormSubmit(e) {
+      e.preventDefault();
+
+      const nameInput = document.getElementById('inputName');
+      const branchInput = document.getElementById('inputBranch');
+      const collegeInput = document.getElementById('inputCollege');
+      const cgpaInput = document.getElementById('inputCgpa');
+      const editId = document.getElementById('editRowId').value;
+
+      const name = nameInput.value.trim();
+      const branch = branchInput.value.trim();
+      const college = collegeInput.value.trim();
+      const cgpa = parseFloat(cgpaInput.value);
+
+      if (!name || !branch || !college || isNaN(cgpa)) {
+        showToast('Please fill out all fields accurately.', 'warning');
+        return;
+      }
+
+      if (cgpa < 0 || cgpa > 10) {
+        showToast('CGPA must be between 0.0 and 10.0', 'warning');
+        return;
+      }
+
+      if (editId) {
+        // Updating existing row
+        const index = students.findIndex(s => s.id === editId);
+        if (index !== -1) {
+          students[index] = { id: editId, name, branch, college, cgpa };
+          showToast(`Updated record for ${name}`, 'success');
+        }
+        cancelEdit();
+      } else {
+        // Adding new row
+        const newRecord = {
+          id: 'rec_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          name,
+          branch,
+          college,
+          cgpa
+        };
+        students.push(newRecord);
+        showToast(`Added ${name} to records list`, 'success');
+        
+        // Reset form inputs for next entry, keep focus on Name for fast multi-entry!
+        nameInput.value = '';
+        branchInput.value = '';
+        collegeInput.value = '';
+        cgpaInput.value = '';
+        nameInput.focus();
+      }
+
+      saveToStorage();
+      renderTable();
+    }
+
+    // Start Edit
+    function editRecord(id) {
+      const record = students.find(s => s.id === id);
+      if (!record) return;
+
+      document.getElementById('editRowId').value = record.id;
+      document.getElementById('inputName').value = record.name;
+      document.getElementById('inputBranch').value = record.branch;
+      document.getElementById('inputCollege').value = record.college;
+      document.getElementById('inputCgpa').value = record.cgpa;
+
+      document.getElementById('formTitle').innerText = 'Update Student Record';
+      document.getElementById('submitText').innerText = 'Save Changes';
+      document.getElementById('submitIcon').setAttribute('data-lucide', 'save');
+      document.getElementById('submitBtn').className = 'h-[42px] px-4 rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 shadow-lg shadow-amber-600/20 transition-all active:scale-95 whitespace-nowrap';
+
+      document.getElementById('editIndicator').classList.remove('hidden');
+      document.getElementById('cancelEditBtn').classList.remove('hidden');
+      
+      lucide.createIcons();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      document.getElementById('inputName').focus();
+    }
+
+    // Cancel Edit
+    function cancelEdit() {
+      document.getElementById('editRowId').value = '';
+      document.getElementById('inputName').value = '';
+      document.getElementById('inputBranch').value = '';
+      document.getElementById('inputCollege').value = '';
+      document.getElementById('inputCgpa').value = '';
+
+      document.getElementById('formTitle').innerText = 'Add New Student Record';
+      document.getElementById('submitText').innerText = 'Add Row';
+      document.getElementById('submitIcon').setAttribute('data-lucide', 'plus-circle');
+      document.getElementById('submitBtn').className = 'h-[42px] px-4 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition-all active:scale-95 whitespace-nowrap';
+
+      document.getElementById('editIndicator').classList.add('hidden');
+      document.getElementById('cancelEditBtn').classList.add('hidden');
+      lucide.createIcons();
+    }
+
+    // Delete Record
+    function deleteRecord(id) {
+      const record = students.find(s => s.id === id);
+      const studentName = record ? record.name : 'Record';
+      students = students.filter(s => s.id !== id);
+      
+      // If was editing this record, reset form
+      if (document.getElementById('editRowId').value === id) {
+        cancelEdit();
+      }
+
+      saveToStorage();
+      renderTable();
+      showToast(`Deleted ${studentName}`, 'error');
+    }
+
+    // Render Table
+    function renderTable() {
+      const tbody = document.getElementById('tableBody');
+      const emptyState = document.getElementById('emptyState');
+      const search = document.getElementById('searchInput').value.toLowerCase().trim();
+      const sortBy = document.getElementById('sortBy').value;
+
+      // Filter
+      let filtered = students.filter(item => {
+        return (
+          item.name.toLowerCase().includes(search) ||
+          item.branch.toLowerCase().includes(search) ||
+          item.college.toLowerCase().includes(search) ||
+          item.cgpa.toString().includes(search)
+        );
+      });
+
+      // Sort
+      if (sortBy === 'name_asc') {
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+      } else if (sortBy === 'cgpa_desc') {
+        filtered.sort((a, b) => b.cgpa - a.cgpa);
+      } else if (sortBy === 'cgpa_asc') {
+        filtered.sort((a, b) => a.cgpa - b.cgpa);
+      } else if (sortBy === 'college_asc') {
+        filtered.sort((a, b) => a.college.localeCompare(b.college));
+      }
+
+      // Update counters
+      document.getElementById('recordCount').innerText = students.length;
+      document.getElementById('visibleCount').innerText = filtered.length;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+      } else {
+        emptyState.classList.add('hidden');
+        tbody.innerHTML = filtered.map((row, index) => {
+          // Color badge based on CGPA
+          let cgpaBadgeClass = 'bg-slate-800 text-slate-300 border-white/10';
+          if (row.cgpa >= 9.0) cgpaBadgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+          else if (row.cgpa >= 7.5) cgpaBadgeClass = 'bg-blue-500/15 text-blue-400 border-blue-500/30';
+          else if (row.cgpa >= 6.0) cgpaBadgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+          else cgpaBadgeClass = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+
+          return `
+            <tr class="hover:bg-surface-850/60 transition group">
+              <td class="py-3 px-4 text-center font-mono-code text-xs text-slate-500">${index + 1}</td>
+              <td class="py-3 px-4 font-semibold text-white">
+                <div class="flex items-center space-x-2">
+                  <div class="h-7 w-7 rounded-lg bg-surface-800 border border-white/10 flex items-center justify-center text-xs font-bold text-slate-300">
+                    ${row.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span>${escapeHtml(row.name)}</span>
+                </div>
+              </td>
+              <td class="py-3 px-4 text-slate-300 text-xs">${escapeHtml(row.branch)}</td>
+              <td class="py-3 px-4 text-slate-300 text-xs">${escapeHtml(row.college)}</td>
+              <td class="py-3 px-4 text-center">
+                <span class="inline-block px-2.5 py-0.5 rounded-full font-mono-code font-bold text-xs border ${cgpaBadgeClass}">
+                  ${row.cgpa.toFixed(2)}
+                </span>
+              </td>
+              <td class="py-3 px-4 text-right">
+                <div class="flex items-center justify-end space-x-1.5 opacity-90 group-hover:opacity-100">
+                  <button onclick="editRecord('${row.id}')" title="Edit row" class="p-1.5 rounded-lg bg-surface-850 hover:bg-amber-500/20 text-slate-400 hover:text-amber-300 border border-white/5 transition">
+                    <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="deleteRecord('${row.id}')" title="Delete row" class="p-1.5 rounded-lg bg-surface-850 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/5 transition">
+                    <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      lucide.createIcons();
+      updateStats();
+    }
+
+    // Statistics Calculation
+    function updateStats() {
+      const total = students.length;
+      document.getElementById('statTotalStudents').innerText = total;
+
+      if (total === 0) {
+        document.getElementById('statAvgCgpa').innerText = '0.00';
+        document.getElementById('statMaxCgpa').innerText = '0.00';
+        document.getElementById('statCollegesCount').innerText = '0';
+        return;
+      }
+
+      const sumCgpa = students.reduce((acc, curr) => acc + curr.cgpa, 0);
+      const avgCgpa = (sumCgpa / total).toFixed(2);
+      const maxCgpa = Math.max(...students.map(s => s.cgpa)).toFixed(2);
+      
+      const uniqueColleges = new Set(students.map(s => s.college.trim().toLowerCase())).size;
+
+      document.getElementById('statAvgCgpa').innerText = avgCgpa;
+      document.getElementById('statMaxCgpa').innerText = maxCgpa;
+      document.getElementById('statCollegesCount').innerText = uniqueColleges;
+    }
+
+    // EXCEL EXPORT (Native .xlsx using SheetJS)
+    function exportToExcel() {
+      if (students.length === 0) {
+        showToast('Please add at least one student before exporting.', 'warning');
+        return;
+      }
+
+      // Format data for Excel worksheet with clean column headers
+      const exportData = students.map((s, idx) => ({
+        "Sl No": idx + 1,
+        "Student Name": s.name,
+        "Branch": s.branch,
+        "College / University": s.college,
+        "CGPA": s.cgpa
+      }));
+
+      // Create Worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Set clean column widths for Excel
+      ws['!cols'] = [
+        { wch: 8 },  // Sl No
+        { wch: 28 }, // Student Name
+        { wch: 28 }, // Branch
+        { wch: 38 }, // College
+        { wch: 10 }  // CGPA
+      ];
+
+      // Create Workbook and Append
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Student Records");
+
+      // Generate filename with timestamp
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `Student_Records_${dateStr}.xlsx`;
+
+      // Trigger native download
+      XLSX.writeFile(wb, filename);
+
+      showToast(`Exported ${students.length} records to ${filename}!`, 'success');
+    }
+
+    // CSV Export
+    function exportToCsv() {
+      if (students.length === 0) {
+        showToast('No records available to export.', 'warning');
+        return;
+      }
+
+      const headers = ['Sl No', 'Student Name', 'Branch', 'College', 'CGPA'];
+      const rows = students.map((s, idx) => [
+        idx + 1,
+        `"${s.name.replace(/"/g, '""')}"`,
+        `"${s.branch.replace(/"/g, '""')}"`,
+        `"${s.college.replace(/"/g, '""')}"`,
+        s.cgpa
+      ]);
+
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `Student_Records_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToast('Exported CSV file!', 'success');
+    }
+
+    // Helper HTML escaper
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, 
+        tag => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          "'": '&#39;',
+          '"': '&quot;'
+        }[tag] || tag)
+      );
+    }
+
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadFromStorage();
+      if (students.length === 0) {
+        // Automatically populate with initial records for first run
+        loadSampleData();
+      } else {
+        renderTable();
+      }
+    });
+  </script>
+</body>
+</html>

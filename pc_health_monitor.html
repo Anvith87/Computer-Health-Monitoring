@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PulseCore | Live PC Hardware & Health Monitor</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: {
+              800: '#1e2433',
+              850: '#171c28',
+              900: '#0f131c',
+              950: '#0a0d14',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #0a0d14;
+      color: #e2e8f0;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f131c;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2a3449;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3e4d6d;
+    }
+    .glass-card {
+      background: rgba(23, 28, 40, 0.85);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-blue-600 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-40 border-b border-white/10 bg-surface-950/90 backdrop-blur-md px-4 sm:px-8 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
+        <i data-lucide="cpu" class="w-6 h-6 text-white"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="text-lg font-extrabold tracking-tight text-white">Pulse<span class="text-blue-400">Core</span></span>
+          <span id="daemonStatusBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            LIVE HARDWARE FEED (psutil)
+          </span>
+        </div>
+        <p class="text-xs text-slate-400" id="headerSubtext">Connecting to local hardware sensors...</p>
+      </div>
+    </div>
+
+    <!-- Quick info & actions -->
+    <div class="flex items-center space-x-3">
+      <div class="hidden md:flex items-center space-x-4 bg-surface-900 border border-white/10 rounded-xl px-3.5 py-1.5 text-xs text-slate-300 font-mono-code">
+        <div>Uptime: <strong class="text-white" id="uptimeDisplay">0m</strong></div>
+        <div class="h-3 w-px bg-white/10"></div>
+        <div id="batteryDisplay" class="flex items-center gap-1">
+          <i data-lucide="battery-charging" class="w-3.5 h-3.5 text-emerald-400"></i>
+          <span>AC Power</span>
+        </div>
+      </div>
+
+      <!-- Pause / Resume Toggle -->
+      <button id="pauseToggleBtn" onclick="togglePause()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface-850 hover:bg-surface-800 text-slate-300 border border-white/10 flex items-center gap-1.5 transition">
+        <i data-lucide="pause" id="pauseIcon" class="w-3.5 h-3.5"></i>
+        <span id="pauseText">Pause</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- NAVIGATION TABS -->
+  <nav class="border-b border-white/10 bg-surface-900/60 px-4 sm:px-8">
+    <div class="max-w-7xl mx-auto flex space-x-2 sm:space-x-4 py-2 overflow-x-auto">
+      <button onclick="switchTab('overview')" id="tab-overview" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-blue-600/20 border border-blue-500/40 flex items-center gap-2 transition">
+        <i data-lucide="activity" class="w-4 h-4 text-blue-400"></i>
+        Performance Overview
+      </button>
+      <button onclick="switchTab('processes')" id="tab-processes" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 border border-transparent flex items-center gap-2 transition">
+        <i data-lucide="list-tree" class="w-4 h-4"></i>
+        Task Manager & Processes
+      </button>
+      <button onclick="switchTab('storage')" id="tab-storage" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 border border-transparent flex items-center gap-2 transition">
+        <i data-lucide="hard-drive" class="w-4 h-4"></i>
+        Drives & Storage
+      </button>
+      <button onclick="switchTab('specs')" id="tab-specs" class="tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 border border-transparent flex items-center gap-2 transition">
+        <i data-lucide="info" class="w-4 h-4"></i>
+        System Specifications
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN VIEW CONTENT -->
+  <main class="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- ==================== TAB 1: OVERVIEW ==================== -->
+    <div id="view-overview" class="space-y-6">
+      
+      <!-- Top 4 Primary Live Dials -->
+      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <!-- CPU Utilization Card -->
+        <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">CPU Usage</span>
+            <span class="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <i data-lucide="cpu" class="w-4 h-4"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-baseline justify-between">
+            <div class="text-3xl font-extrabold text-white font-mono-code" id="cpuTotalVal">0.0<span class="text-base text-slate-400 font-normal">%</span></div>
+            <span id="cpuLoadBadge" class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Nominal</span>
+          </div>
+          <div class="mt-3 w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div id="cpuTotalBar" class="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div class="mt-3 text-xs text-slate-400 font-mono-code flex justify-between">
+            <span id="cpuCoresLabel">4 Logical Cores</span>
+            <span id="cpuFreqVal">Active</span>
+          </div>
+        </div>
+
+        <!-- RAM Card -->
+        <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Memory (RAM)</span>
+            <span class="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <i data-lucide="server" class="w-4 h-4"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-baseline justify-between">
+            <div class="text-3xl font-extrabold text-white font-mono-code" id="ramUsedVal">0.0<span class="text-base text-slate-400 font-normal"> / 0 GB</span></div>
+            <span id="ramPercentBadge" class="text-xs font-semibold px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">0%</span>
+          </div>
+          <div class="mt-3 w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div id="ramBar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div class="mt-3 text-xs text-slate-400 font-mono-code flex justify-between">
+            <span>Available: <strong class="text-slate-200" id="ramAvailVal">0 GB</strong></span>
+            <span>Swap: <span id="swapUsedVal">0%</span></span>
+          </div>
+        </div>
+
+        <!-- Primary Disk Usage & IO Card -->
+        <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Primary Disk (C:)</span>
+            <span class="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <i data-lucide="hard-drive" class="w-4 h-4"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-baseline justify-between">
+            <div class="text-3xl font-extrabold text-white font-mono-code" id="diskPercentVal">0<span class="text-base text-slate-400 font-normal">%</span></div>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20" id="diskFreeVal">0 GB Free</span>
+          </div>
+          <div class="mt-3 w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div id="diskBar" class="bg-gradient-to-r from-amber-500 to-orange-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div class="mt-3 text-xs text-slate-400 font-mono-code flex justify-between">
+            <span>R: <strong class="text-white" id="diskReadRate">0 KB/s</strong></span>
+            <span>W: <strong class="text-white" id="diskWriteRate">0 KB/s</strong></span>
+          </div>
+        </div>
+
+        <!-- Network Real-Time Card -->
+        <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Network Bandwidth</span>
+            <span class="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <i data-lucide="wifi" class="w-4 h-4"></i>
+            </span>
+          </div>
+          <div class="mt-3 flex items-baseline justify-between">
+            <div class="text-3xl font-extrabold text-white font-mono-code" id="netSpeedTotal">0<span class="text-base text-slate-400 font-normal"> KB/s</span></div>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/20">Live</span>
+          </div>
+          <div class="mt-3 w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div id="netBar" class="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full transition-all duration-300" style="width: 15%"></div>
+          </div>
+          <div class="mt-3 text-xs text-slate-400 font-mono-code flex justify-between">
+            <span>↓ In: <strong class="text-white" id="netRecvRate">0 KB/s</strong></span>
+            <span>↑ Out: <strong class="text-white" id="netSentRate">0 KB/s</strong></span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Real-Time Telemetry Line Chart & Per-Core Breakdown -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Live Chart (2 Cols) -->
+        <div class="glass-card rounded-2xl p-5 lg:col-span-2 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 class="text-base font-bold text-white flex items-center gap-2">
+                <i data-lucide="line-chart" class="w-4 h-4 text-blue-400"></i>
+                Real-Time Hardware Telemetry (psutil 1s Interval)
+              </h2>
+              <p class="text-xs text-slate-400">Actual hardware measurements polled continuously from your Windows kernel</p>
+            </div>
+            <div class="flex items-center space-x-2 text-xs">
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-900 border border-white/5 text-slate-300">
+                <span class="w-2 h-2 rounded-full bg-blue-500"></span> CPU %
+              </span>
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-900 border border-white/5 text-slate-300">
+                <span class="w-2 h-2 rounded-full bg-purple-500"></span> RAM %
+              </span>
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-900 border border-white/5 text-slate-300">
+                <span class="w-2 h-2 rounded-full bg-amber-500"></span> Disk I/O
+              </span>
+            </div>
+          </div>
+
+          <div class="h-64 sm:h-72 w-full">
+            <canvas id="realtimeChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Per-Core CPU Gauges (1 Col) -->
+        <div class="glass-card rounded-2xl p-5 space-y-3 flex flex-col justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="cpu" class="w-4 h-4 text-emerald-400"></i>
+              Per-Core Load Distribution
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">Individual logical thread utilization</p>
+          </div>
+
+          <div class="space-y-3.5 my-auto" id="coresContainer">
+            <!-- Dynamically injected per core -->
+            <div class="text-xs text-slate-400">Polling processor cores...</div>
+          </div>
+
+          <div class="pt-3 border-t border-white/10 text-xs font-mono-code text-slate-400 flex justify-between">
+            <span>Process Count: <strong class="text-white" id="totalProcessesCount">0</strong></span>
+            <span>Threads: <strong class="text-white" id="totalThreadsCount">0</strong></span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Quick Snapshot: Top 5 CPU Demanding Processes -->
+      <section class="glass-card rounded-2xl p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="flame" class="w-4 h-4 text-rose-400"></i>
+            Top CPU Consumers Right Now
+          </h3>
+          <button onclick="switchTab('processes')" class="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1">
+            View All Processes <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-white/10 text-slate-400 uppercase text-[10px] tracking-wider">
+                <th class="py-2 px-3">PID</th>
+                <th class="py-2 px-3">Process Name</th>
+                <th class="py-2 px-3">CPU %</th>
+                <th class="py-2 px-3">Memory (MB)</th>
+                <th class="py-2 px-3">RAM %</th>
+                <th class="py-2 px-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="topCpuTable" class="divide-y divide-white/5 font-mono-code">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ==================== TAB 2: PROCESSES (TASK MANAGER) ==================== -->
+    <div id="view-processes" class="hidden space-y-4">
+      <div class="glass-card rounded-2xl p-5 border border-white/10 shadow-xl space-y-4">
+        
+        <!-- Search & Control Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-white/10">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="list-tree" class="w-5 h-5 text-blue-400"></i>
+              Live Windows Task Manager (<span id="procTotalHeader">0</span> running processes)
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Real active processes running on your Windows PC. You can search, sort, and terminate tasks.</p>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="relative min-w-[220px]">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input 
+                type="text" 
+                id="procSearchInput" 
+                oninput="renderProcessesTable()" 
+                placeholder="Search by name or PID..." 
+                class="w-full bg-surface-900 border border-white/10 rounded-xl pl-9 pr-3.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              >
+            </div>
+
+            <select id="procSortBy" onchange="renderProcessesTable()" class="bg-surface-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500">
+              <option value="cpu">Sort: Highest CPU %</option>
+              <option value="mem">Sort: Highest Memory (MB)</option>
+              <option value="name">Sort: Name (A → Z)</option>
+              <option value="pid">Sort: PID</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Process Table -->
+        <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="sticky top-0 bg-surface-900 z-10">
+              <tr class="border-b border-white/10 text-slate-400 uppercase text-[10px] tracking-wider">
+                <th class="py-2.5 px-3">PID</th>
+                <th class="py-2.5 px-3">Process Name</th>
+                <th class="py-2.5 px-3">CPU Usage</th>
+                <th class="py-2.5 px-3">Memory (RSS)</th>
+                <th class="py-2.5 px-3">RAM %</th>
+                <th class="py-2.5 px-3">User / Account</th>
+                <th class="py-2.5 px-3 text-right">Terminate</th>
+              </tr>
+            </thead>
+            <tbody id="allProcessesTable" class="divide-y divide-white/5 font-mono-code">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ==================== TAB 3: STORAGE ==================== -->
+    <div id="view-storage" class="hidden space-y-6">
+      <div class="glass-card rounded-2xl p-5 border border-white/10 space-y-4">
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="hard-drive" class="w-5 h-5 text-amber-400"></i>
+          Mounted Drives & Partitions
+        </h2>
+        <p class="text-xs text-slate-400">Real drive capacities, mount paths, free storage, and disk I/O metrics.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="disksListContainer">
+          <!-- Dynamically populated with real disk drives -->
+        </div>
+
+        <!-- Cumulative I/O Telemetry -->
+        <div class="pt-4 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="p-3.5 rounded-xl bg-surface-900 border border-white/5">
+            <span class="text-[11px] text-slate-400 uppercase">Total Bytes Read</span>
+            <p class="text-lg font-bold text-white font-mono-code" id="cumulReadBytes">0 GB</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-surface-900 border border-white/5">
+            <span class="text-[11px] text-slate-400 uppercase">Total Bytes Written</span>
+            <p class="text-lg font-bold text-white font-mono-code" id="cumulWriteBytes">0 GB</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-surface-900 border border-white/5">
+            <span class="text-[11px] text-slate-400 uppercase">Disk Read Ops</span>
+            <p class="text-lg font-bold text-white font-mono-code" id="cumulReadCount">0</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-surface-900 border border-white/5">
+            <span class="text-[11px] text-slate-400 uppercase">Disk Write Ops</span>
+            <p class="text-lg font-bold text-white font-mono-code" id="cumulWriteCount">0</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 4: SPECS ==================== -->
+    <div id="view-specs" class="hidden space-y-6">
+      <div class="glass-card rounded-2xl p-6 border border-white/10 space-y-6">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="info" class="w-5 h-5 text-indigo-400"></i>
+            Hardware & Operating System Specifications
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Verified hardware information queried directly from your Windows system.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="systemSpecsGrid">
+          <div class="p-4 rounded-xl bg-surface-900 border border-white/5 space-y-1">
+            <p class="text-[11px] text-slate-400 uppercase">Processor Model</p>
+            <p class="text-sm font-bold text-white font-mono-code" id="specCpuModel">Loading...</p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface-900 border border-white/5 space-y-1">
+            <p class="text-[11px] text-slate-400 uppercase">Cores / Threads</p>
+            <p class="text-sm font-bold text-white font-mono-code" id="specCoresCount">Loading...</p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface-900 border border-white/5 space-y-1">
+            <p class="text-[11px] text-slate-400 uppercase">Total Installed RAM</p>
+            <p class="text-sm font-bold text-white font-mono-code" id="specTotalRam">Loading...</p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface-900 border border-white/5 space-y-1">
+            <p class="text-[11px] text-slate-400 uppercase">OS & Platform</p>
+            <p class="text-sm font-bold text-white font-mono-code" id="specOsName">Loading...</p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface-900 border border-white/5 space-y-1">
+            <p class="text-[11px] text-slate-400 uppercase">Machine / Hostname</p>
+            <p class="text-sm font-bold text-white font-mono-code" id="specHostname">Loading...</p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface-900 border border-white/5 space-y-1">
+            <p class="text-[11px] text-slate-400 uppercase">System Boot Time</p>
+            <p class="text-sm font-bold text-white font-mono-code" id="specBootTime">Loading...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    lucide.createIcons();
+
+    let isPaused = false;
+    let pollInterval = 1000; // 1 second
+    let currentData = null;
+    let systemInfo = null;
+
+    // Chart.js Setup
+    const ctx = document.getElementById('realtimeChart').getContext('2d');
+    const timeLabels = Array.from({length: 25}, (_, i) => `${25 - i}s ago`);
+    const initialZeros = Array(25).fill(0);
+
+    const realtimeChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [
+          {
+            label: 'CPU %',
+            data: [...initialZeros],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.12)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 0
+          },
+          {
+            label: 'RAM %',
+            data: [...initialZeros],
+            borderColor: '#a855f7',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 0
+          },
+          {
+            label: 'Disk Read (MB/s)',
+            data: [...initialZeros],
+            borderColor: '#f59e0b',
+            backgroundColor: 'transparent',
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 255, 255, 0.04)' },
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }
+          },
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' }, callback: v => v + '%' }
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+
+    // Tab Switching
+    function switchTab(tabName) {
+      ['overview', 'processes', 'storage', 'specs'].forEach(tab => {
+        const view = document.getElementById(`view-${tab}`);
+        const btn = document.getElementById(`tab-${tab}`);
+        if (tab === tabName) {
+          view.classList.remove('hidden');
+          btn.className = 'tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-blue-600/20 border border-blue-500/40 flex items-center gap-2 transition';
+        } else {
+          view.classList.add('hidden');
+          btn.className = 'tab-btn px-3.5 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 border border-transparent flex items-center gap-2 transition';
+        }
+      });
+      lucide.createIcons();
+    }
+
+    // Toggle Pause
+    function togglePause() {
+      isPaused = !isPaused;
+      const btn = document.getElementById('pauseToggleBtn');
+      const icon = document.getElementById('pauseIcon');
+      const text = document.getElementById('pauseText');
+      if (isPaused) {
+        text.innerText = 'Resume';
+        icon.setAttribute('data-lucide', 'play');
+        btn.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white flex items-center gap-1.5 transition';
+      } else {
+        text.innerText = 'Pause';
+        icon.setAttribute('data-lucide', 'pause');
+        btn.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface-850 hover:bg-surface-800 text-slate-300 border border-white/10 flex items-center gap-1.5 transition';
+      }
+      lucide.createIcons();
+    }
+
+    // Format Bytes
+    function formatBytes(bytes, decimals = 1) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Format Uptime
+    function formatUptime(seconds) {
+      const d = Math.floor(seconds / (3600 * 24));
+      const h = Math.floor((seconds % (3600 * 24)) / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      return `${m}m ${s}s`;
+    }
+
+    // Fetch System Info on Start
+    async function fetchSystemInfo() {
+      try {
+        const res = await fetch('/api/system-info');
+        if (res.ok) {
+          systemInfo = await res.json();
+          document.getElementById('headerSubtext').innerText = `${systemInfo.cpu_model} • ${systemInfo.os_name}`;
+          document.getElementById('specCpuModel').innerText = systemInfo.cpu_model;
+          document.getElementById('specCoresCount').innerText = `${systemInfo.physical_cores} Physical / ${systemInfo.logical_cores} Logical`;
+          document.getElementById('specTotalRam').innerText = `${systemInfo.total_ram_gb} GB`;
+          document.getElementById('specOsName').innerText = `${systemInfo.os_name} (${systemInfo.os_arch})`;
+          document.getElementById('specHostname').innerText = systemInfo.hostname;
+          document.getElementById('specBootTime').innerText = systemInfo.boot_time;
+          document.getElementById('cpuCoresLabel').innerText = `${systemInfo.logical_cores} Logical Cores`;
+        }
+      } catch (e) {
+        console.error("Could not fetch system info", e);
+      }
+    }
+
+    // Main Polling Loop
+    async function fetchRealtimeStats() {
+      if (isPaused) return;
+
+      try {
+        const res = await fetch('/api/realtime-stats');
+        if (!res.ok) throw new Error('API response not OK');
+        const data = await res.json();
+        currentData = data;
+
+        // Status badge
+        const badge = document.getElementById('daemonStatusBadge');
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> LIVE HARDWARE FEED (psutil)`;
+        badge.className = 'text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1.5';
+
+        // Uptime & Battery
+        document.getElementById('uptimeDisplay').innerText = formatUptime(data.uptime_seconds);
+        if (data.battery) {
+          const batt = data.battery;
+          const iconName = batt.power_plugged ? 'battery-charging' : (batt.percent > 20 ? 'battery' : 'battery-warning');
+          document.getElementById('batteryDisplay').innerHTML = `
+            <i data-lucide="${iconName}" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>${batt.percent}% ${batt.power_plugged ? '(Plugged in)' : ''}</span>
+          `;
+        }
+
+        // 1. CPU
+        const cpuTotal = data.cpu_total;
+        document.getElementById('cpuTotalVal').innerHTML = `${cpuTotal.toFixed(1)}<span class="text-base text-slate-400 font-normal">%</span>`;
+        document.getElementById('cpuTotalBar').style.width = `${Math.min(100, cpuTotal)}%`;
+        
+        const loadBadge = document.getElementById('cpuLoadBadge');
+        if (cpuTotal > 80) {
+          loadBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/20';
+          loadBadge.innerText = 'High Load';
+        } else if (cpuTotal > 50) {
+          loadBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20';
+          loadBadge.innerText = 'Moderate';
+        } else {
+          loadBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20';
+          loadBadge.innerText = 'Nominal';
+        }
+
+        // Per-Core CPU Gauges
+        const coresContainer = document.getElementById('coresContainer');
+        if (data.cpu_cores && data.cpu_cores.length > 0) {
+          coresContainer.innerHTML = data.cpu_cores.map((coreVal, i) => `
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs font-mono-code text-slate-300">
+                <span>Core ${i}</span>
+                <span>${coreVal.toFixed(1)}%</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style="width: ${Math.min(100, coreVal)}%"></div>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // 2. RAM
+        const mem = data.memory;
+        document.getElementById('ramUsedVal').innerHTML = `${mem.used_gb.toFixed(2)}<span class="text-base text-slate-400 font-normal"> / ${mem.total_gb.toFixed(1)} GB</span>`;
+        document.getElementById('ramPercentBadge').innerText = `${mem.percent.toFixed(1)}%`;
+        document.getElementById('ramBar').style.width = `${mem.percent}%`;
+        document.getElementById('ramAvailVal').innerText = `${mem.available_gb.toFixed(2)} GB`;
+        document.getElementById('swapUsedVal').innerText = `${data.swap ? data.swap.percent.toFixed(1) : 0}%`;
+
+        // 3. Disk & Disk IO
+        if (data.disks && data.disks.length > 0) {
+          const primary = data.disks[0];
+          document.getElementById('diskPercentVal').innerHTML = `${primary.percent}<span class="text-base text-slate-400 font-normal">%</span>`;
+          document.getElementById('diskFreeVal').innerText = `${primary.free_gb.toFixed(1)} GB Free`;
+          document.getElementById('diskBar').style.width = `${primary.percent}%`;
+        }
+        document.getElementById('diskReadRate').innerText = `${formatBytes(data.disk_io.read_bytes_per_sec)}/s`;
+        document.getElementById('diskWriteRate').innerText = `${formatBytes(data.disk_io.write_bytes_per_sec)}/s`;
+
+        // 4. Network
+        const netTotalSpeed = data.net_io.bytes_sent_per_sec + data.net_io.bytes_recv_per_sec;
+        document.getElementById('netSpeedTotal').innerHTML = `${formatBytes(netTotalSpeed)}/s`;
+        document.getElementById('netRecvRate').innerText = `${formatBytes(data.net_io.bytes_recv_per_sec)}/s`;
+        document.getElementById('netSentRate').innerText = `${formatBytes(data.net_io.bytes_sent_per_sec)}/s`;
+
+        // 5. Update Telemetry Chart
+        realtimeChart.data.datasets[0].data.shift();
+        realtimeChart.data.datasets[0].data.push(cpuTotal);
+
+        realtimeChart.data.datasets[1].data.shift();
+        realtimeChart.data.datasets[1].data.push(mem.percent);
+
+        const readMb = data.disk_io.read_bytes_per_sec / (1024 * 1024);
+        realtimeChart.data.datasets[2].data.shift();
+        realtimeChart.data.datasets[2].data.push(Math.min(100, Math.round(readMb * 5))); // scale for view
+
+        realtimeChart.update();
+
+        // 6. Processes count
+        document.getElementById('totalProcessesCount').innerText = data.processes_count || 0;
+        document.getElementById('procTotalHeader').innerText = data.processes_count || 0;
+
+        // 7. Top CPU snapshot in Overview tab
+        renderTopCpuSnapshot(data.processes);
+
+        // 8. Render All processes if tab active
+        renderProcessesTable();
+
+        // 9. Storage Tab updates
+        renderStorageTab(data.disks, data.disk_io);
+
+        lucide.createIcons();
+
+      } catch (err) {
+        console.error("Poller error:", err);
+        const badge = document.getElementById('daemonStatusBadge');
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> Disconnected`;
+        badge.className = 'text-xs px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 font-semibold flex items-center gap-1.5';
+      }
+    }
+
+    // Top CPU Table snapshot
+    function renderTopCpuSnapshot(procs) {
+      if (!procs) return;
+      const sorted = [...procs].sort((a, b) => b.cpu - a.cpu).slice(0, 5);
+      const tbody = document.getElementById('topCpuTable');
+      tbody.innerHTML = sorted.map(p => `
+        <tr class="hover:bg-white/[0.02]">
+          <td class="py-2 px-3 text-slate-500">${p.pid}</td>
+          <td class="py-2 px-3 text-white font-semibold flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full ${p.cpu > 20 ? 'bg-rose-400' : 'bg-emerald-400'}"></span>
+            ${escapeHtml(p.name)}
+          </td>
+          <td class="py-2 px-3 ${p.cpu > 20 ? 'text-rose-400 font-bold' : 'text-slate-300'}">${p.cpu.toFixed(1)}%</td>
+          <td class="py-2 px-3 text-slate-300">${p.mem_mb.toFixed(1)} MB</td>
+          <td class="py-2 px-3 text-slate-400">${p.mem_percent.toFixed(1)}%</td>
+          <td class="py-2 px-3 text-right">
+            <button onclick="killProcess(${p.pid}, '${escapeHtml(p.name)}')" class="px-2 py-0.5 text-[10px] rounded bg-rose-500/15 text-rose-400 border border-rose-500/20 hover:bg-rose-500/30 transition">
+              Kill
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Full Processes Table Tab
+    function renderProcessesTable() {
+      if (!currentData || !currentData.processes) return;
+      const search = document.getElementById('procSearchInput').value.toLowerCase().trim();
+      const sortBy = document.getElementById('procSortBy').value;
+
+      let filtered = currentData.processes.filter(p => {
+        return p.name.toLowerCase().includes(search) || p.pid.toString().includes(search);
+      });
+
+      if (sortBy === 'cpu') {
+        filtered.sort((a, b) => b.cpu - a.cpu);
+      } else if (sortBy === 'mem') {
+        filtered.sort((a, b) => b.mem_mb - a.mem_mb);
+      } else if (sortBy === 'name') {
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+      } else if (sortBy === 'pid') {
+        filtered.sort((a, b) => a.pid - b.pid);
+      }
+
+      const tbody = document.getElementById('allProcessesTable');
+      tbody.innerHTML = filtered.slice(0, 100).map(p => `
+        <tr class="hover:bg-white/[0.03] transition">
+          <td class="py-2 px-3 text-slate-500">${p.pid}</td>
+          <td class="py-2 px-3 text-white font-medium flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full ${p.cpu > 15 ? 'bg-amber-400' : 'bg-slate-500'}"></span>
+            ${escapeHtml(p.name)}
+          </td>
+          <td class="py-2 px-3 ${p.cpu > 15 ? 'text-amber-400 font-bold' : 'text-slate-300'}">${p.cpu.toFixed(1)}%</td>
+          <td class="py-2 px-3 text-slate-300 font-bold">${p.mem_mb.toFixed(1)} MB</td>
+          <td class="py-2 px-3 text-slate-400">${p.mem_percent.toFixed(1)}%</td>
+          <td class="py-2 px-3 text-slate-400 truncate max-w-[140px]">${escapeHtml(p.user || 'SYSTEM')}</td>
+          <td class="py-2 px-3 text-right">
+            <button onclick="killProcess(${p.pid}, '${escapeHtml(p.name)}')" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/25 transition">
+              End Task
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Kill Process API Call
+    async function killProcess(pid, name) {
+      if (!confirm(`Are you sure you want to terminate process "${name}" (PID: ${pid})?`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/kill-process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pid })
+        });
+        const result = await res.json();
+        if (result.success) {
+          showToast(`Terminated ${name} (PID ${pid})`, 'success');
+          fetchRealtimeStats();
+        } else {
+          showToast(`Error: ${result.error}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Failed to kill process: ${err.message}`, 'error');
+      }
+    }
+
+    // Storage Tab
+    function renderStorageTab(disks, disk_io) {
+      if (!disks) return;
+      const container = document.getElementById('disksListContainer');
+      container.innerHTML = disks.map(d => `
+        <div class="p-4 rounded-xl bg-surface-900 border border-white/5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="hard-drive" class="w-4 h-4 text-amber-400"></i>
+              <span class="font-bold text-white font-mono-code">${d.device} (${d.mountpoint})</span>
+            </div>
+            <span class="text-xs px-2 py-0.5 rounded bg-surface-800 text-slate-300 font-mono-code">${d.fstype || 'NTFS'}</span>
+          </div>
+          <div class="flex items-baseline justify-between text-xs font-mono-code">
+            <span class="text-slate-400">Used: <strong class="text-white">${d.used_gb.toFixed(1)} GB</strong></span>
+            <span class="text-slate-400">Total: <strong class="text-white">${d.total_gb.toFixed(1)} GB</strong></span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div class="bg-gradient-to-r from-amber-500 to-orange-500 h-2 rounded-full" style="width: ${d.percent}%"></div>
+          </div>
+          <div class="flex justify-between text-xs text-slate-400 font-mono-code pt-1">
+            <span>Free: <strong class="text-emerald-400">${d.free_gb.toFixed(1)} GB</strong></span>
+            <span>${d.percent}% Allocated</span>
+          </div>
+        </div>
+      `).join('');
+
+      if (disk_io) {
+        document.getElementById('cumulReadBytes').innerText = formatBytes(disk_io.cumulative_read_bytes);
+        document.getElementById('cumulWriteBytes').innerText = formatBytes(disk_io.cumulative_write_bytes);
+        document.getElementById('cumulReadCount').innerText = disk_io.read_count.toLocaleString();
+        document.getElementById('cumulWriteCount').innerText = disk_io.write_count.toLocaleString();
+      }
+    }
+
+    // Toast
+    function showToast(msg, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `p-3.5 rounded-xl border shadow-xl flex items-center space-x-2 text-xs font-semibold backdrop-blur-md transition-all duration-300 ${
+        type === 'error' ? 'bg-surface-900 border-rose-500/40 text-rose-400' : 'bg-surface-900 border-emerald-500/40 text-emerald-400'
+      }`;
+      toast.innerHTML = `<span>${msg}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3500);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    // Start polling
+    fetchSystemInfo();
+    fetchRealtimeStats();
+    setInterval(fetchRealtimeStats, pollInterval);
+  </script>
+</body>
+</html>

@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PulseOps | System & Infrastructure Monitor</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              400: '#60a5fa',
+              500: '#3b82f6',
+              600: '#2563eb',
+            },
+            surface: {
+              800: '#1e2230',
+              850: '#171a26',
+              900: '#0f121b',
+              950: '#090b11',
+            }
+          },
+          animation: {
+            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #090b11;
+      color: #e2e8f0;
+    }
+    
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f121b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #283046;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3e4a6d;
+    }
+
+    .glass-card {
+      background: rgba(23, 26, 38, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .glass-card:hover {
+      border-color: rgba(99, 102, 241, 0.25);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-blue-600 selection:text-white">
+
+  <!-- TOP NAVBAR -->
+  <header class="sticky top-0 z-40 border-b border-white/10 bg-surface-950/80 backdrop-blur-md px-4 lg:px-8 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+        <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="text-base font-extrabold tracking-tight text-white">Pulse<span class="text-blue-400">Ops</span></span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            PROD-CLUSTER-01
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-400">Active Node: <span class="text-slate-300 font-mono-code">us-east-alpha (10.0.4.128)</span></p>
+      </div>
+    </div>
+
+    <!-- Quick controls -->
+    <div class="flex items-center space-x-3">
+      <!-- Live Status Ticker -->
+      <div class="hidden md:flex items-center space-x-4 bg-surface-900 border border-white/5 rounded-xl px-3.5 py-1.5 text-xs text-slate-300">
+        <div class="flex items-center space-x-1.5">
+          <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span>Uptime: <strong class="text-white font-mono-code" id="uptimeCounter">99.98%</strong></span>
+        </div>
+        <div class="h-3 w-px bg-white/10"></div>
+        <div class="flex items-center space-x-1.5">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+          <span class="text-emerald-400 font-medium">All Systems Operational</span>
+        </div>
+        <div class="h-3 w-px bg-white/10"></div>
+        <div class="font-mono-code text-[11px] text-slate-400" id="liveClock">00:00:00 UTC</div>
+      </div>
+
+      <!-- Simulation Action Buttons -->
+      <button id="stressBtn" onclick="toggleStressTest()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 transition-all flex items-center gap-1.5">
+        <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+        <span>Simulate Spike</span>
+      </button>
+
+      <button onclick="refreshData(true)" class="p-2 rounded-lg bg-surface-850 hover:bg-surface-800 text-slate-300 border border-white/5 transition" title="Manual Refresh">
+        <i data-lucide="refresh-cw" id="refreshIcon" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 p-4 lg:p-8 space-y-6 max-w-7xl mx-auto w-full">
+
+    <!-- OVERVIEW STATS CARDS -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- CPU Gauge Card -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all duration-300">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">CPU Utilization</span>
+          <span class="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            <i data-lucide="cpu" class="w-4 h-4"></i>
+          </span>
+        </div>
+        <div class="mt-3 flex items-baseline justify-between">
+          <div class="text-3xl font-extrabold text-white font-mono-code" id="cpuValue">38.4<span class="text-base text-slate-400 font-normal">%</span></div>
+          <span id="cpuBadge" class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Normal</span>
+        </div>
+        <!-- Progress bar -->
+        <div class="mt-3 w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
+          <div id="cpuBar" class="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-500" style="width: 38.4%"></div>
+        </div>
+        <div class="mt-3 flex justify-between text-xs text-slate-400 font-mono-code">
+          <span>8 Cores @ 3.60 GHz</span>
+          <span id="cpuTemp">52°C</span>
+        </div>
+      </div>
+
+      <!-- Memory Card -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all duration-300">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Memory (RAM)</span>
+          <span class="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <i data-lucide="server" class="w-4 h-4"></i>
+          </span>
+        </div>
+        <div class="mt-3 flex items-baseline justify-between">
+          <div class="text-3xl font-extrabold text-white font-mono-code" id="ramValue">18.2<span class="text-base text-slate-400 font-normal"> / 32 GB</span></div>
+          <span id="ramBadge" class="text-xs font-semibold px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">56.8%</span>
+        </div>
+        <div class="mt-3 w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
+          <div id="ramBar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-500" style="width: 56.8%"></div>
+        </div>
+        <div class="mt-3 flex justify-between text-xs text-slate-400 font-mono-code">
+          <span>Swap: 1.4 GB / 8 GB</span>
+          <span>Cache: 4.8 GB</span>
+        </div>
+      </div>
+
+      <!-- Network Card -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all duration-300">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Network Throughput</span>
+          <span class="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+            <i data-lucide="network" class="w-4 h-4"></i>
+          </span>
+        </div>
+        <div class="mt-3 flex items-baseline justify-between">
+          <div class="text-3xl font-extrabold text-white font-mono-code" id="netValue">148<span class="text-base text-slate-400 font-normal"> MB/s</span></div>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/20">Active</span>
+        </div>
+        <div class="mt-3 w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
+          <div id="netBar" class="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full transition-all duration-500" style="width: 44%"></div>
+        </div>
+        <div class="mt-3 flex justify-between text-xs text-slate-400 font-mono-code">
+          <span>↓ In: <span id="netIn">84 MB/s</span></span>
+          <span>↑ Out: <span id="netOut">64 MB/s</span></span>
+        </div>
+      </div>
+
+      <!-- Latency & RPS Card -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden transition-all duration-300">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">API Latency (p95)</span>
+          <span class="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <i data-lucide="gauge" class="w-4 h-4"></i>
+          </span>
+        </div>
+        <div class="mt-3 flex items-baseline justify-between">
+          <div class="text-3xl font-extrabold text-white font-mono-code" id="latencyValue">24<span class="text-base text-slate-400 font-normal"> ms</span></div>
+          <span id="latencyBadge" class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Fast</span>
+        </div>
+        <div class="mt-3 w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
+          <div id="latencyBar" class="bg-gradient-to-r from-amber-500 to-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 24%"></div>
+        </div>
+        <div class="mt-3 flex justify-between text-xs text-slate-400 font-mono-code">
+          <span>Req: <strong class="text-white" id="rpsValue">2,410</strong> req/s</span>
+          <span>Err: <strong class="text-emerald-400" id="errRate">0.02%</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- REAL-TIME CHARTS SECTION -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Primary Live Trend Chart (2 columns) -->
+      <div class="glass-card rounded-2xl p-5 lg:col-span-2 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="line-chart" class="w-4 h-4 text-blue-400"></i>
+              Real-Time Resource Telemetry
+            </h2>
+            <p class="text-xs text-slate-400">Dynamic CPU, Memory and I/O pressure over the last 30 intervals</p>
+          </div>
+          <div class="flex items-center space-x-2 text-xs">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-900 border border-white/5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-blue-500"></span> CPU
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-900 border border-white/5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-purple-500"></span> RAM
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-900 border border-white/5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Network
+            </span>
+          </div>
+        </div>
+
+        <div class="h-64 sm:h-72 w-full">
+          <canvas id="telemetryChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Storage Breakdown Doughnut (1 column) -->
+      <div class="glass-card rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="hard-drive" class="w-4 h-4 text-purple-400"></i>
+              NVMe Disk Allocation
+            </h2>
+            <span class="text-xs font-mono-code text-slate-400">1.8 TB / 2.0 TB</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Storage distribution across cluster volumes</p>
+        </div>
+
+        <div class="h-52 relative flex items-center justify-center my-auto">
+          <canvas id="storageChart"></canvas>
+          <div class="absolute text-center pointer-events-none">
+            <span class="text-2xl font-bold font-mono-code text-white">90%</span>
+            <span class="block text-[10px] text-slate-400 uppercase tracking-wider">Allocated</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-xs font-mono-code pt-2 border-t border-white/5">
+          <div class="flex items-center gap-2 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span> PostgreSQL (850 GB)
+          </div>
+          <div class="flex items-center gap-2 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-purple-500"></span> App Containers (420 GB)
+          </div>
+          <div class="flex items-center gap-2 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> WAL & Logs (320 GB)
+          </div>
+          <div class="flex items-center gap-2 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-slate-600"></span> Free Space (200 GB)
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SERVICE HEALTH & LIVE LOG STREAM -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Microservices Status Grid (1 column) -->
+      <div class="glass-card rounded-2xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
+            Service Status
+          </h2>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">6/6 Healthy</span>
+        </div>
+
+        <div class="space-y-2.5" id="servicesList">
+          <!-- Dynamically populated or rendered static -->
+          <div class="p-3 rounded-xl bg-surface-900 border border-white/5 flex items-center justify-between hover:bg-surface-850 transition">
+            <div class="flex items-center space-x-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <div>
+                <p class="text-sm font-semibold text-white">API Gateway (Kong)</p>
+                <p class="text-[11px] text-slate-400 font-mono-code">Port 443 • 12ms</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono-code text-slate-300">99.99%</span>
+          </div>
+
+          <div class="p-3 rounded-xl bg-surface-900 border border-white/5 flex items-center justify-between hover:bg-surface-850 transition">
+            <div class="flex items-center space-x-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <div>
+                <p class="text-sm font-semibold text-white">Auth & Session Service</p>
+                <p class="text-[11px] text-slate-400 font-mono-code">JWT Auth • 8ms</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono-code text-slate-300">100%</span>
+          </div>
+
+          <div class="p-3 rounded-xl bg-surface-900 border border-white/5 flex items-center justify-between hover:bg-surface-850 transition">
+            <div class="flex items-center space-x-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <div>
+                <p class="text-sm font-semibold text-white">PostgreSQL Primary</p>
+                <p class="text-[11px] text-slate-400 font-mono-code">Connections: 84/200</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono-code text-slate-300">99.95%</span>
+          </div>
+
+          <div class="p-3 rounded-xl bg-surface-900 border border-white/5 flex items-center justify-between hover:bg-surface-850 transition">
+            <div class="flex items-center space-x-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <div>
+                <p class="text-sm font-semibold text-white">Redis Cluster Cache</p>
+                <p class="text-[11px] text-slate-400 font-mono-code">Hit Ratio: 94.2%</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono-code text-slate-300">100%</span>
+          </div>
+
+          <div class="p-3 rounded-xl bg-surface-900 border border-white/5 flex items-center justify-between hover:bg-surface-850 transition">
+            <div class="flex items-center space-x-3">
+              <span id="workerStatusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <div>
+                <p class="text-sm font-semibold text-white">Task Worker Pool</p>
+                <p class="text-[11px] text-slate-400 font-mono-code" id="workerStatusText">Jobs in Queue: 14</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono-code text-slate-300">99.8%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Terminal Log Stream (2 columns) -->
+      <div class="glass-card rounded-2xl p-5 lg:col-span-2 space-y-3 flex flex-col">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i>
+            <h2 class="text-base font-bold text-white">Cluster Event & Telemetry Stream</h2>
+          </div>
+          <div class="flex items-center space-x-2">
+            <!-- Filter Level Dropdown -->
+            <select id="logFilter" onchange="renderLogs()" class="bg-surface-900 text-xs border border-white/10 rounded-lg px-2.5 py-1 text-slate-300 focus:outline-none focus:border-blue-500">
+              <option value="ALL">All Levels</option>
+              <option value="INFO">INFO Only</option>
+              <option value="WARN">WARN Only</option>
+              <option value="ERROR">ERROR Only</option>
+            </select>
+            <button onclick="clearLogs()" class="px-2.5 py-1 text-xs rounded-lg bg-surface-900 text-slate-400 hover:text-white border border-white/10 transition">
+              Clear
+            </button>
+            <button onclick="addManualLog()" class="px-2.5 py-1 text-xs rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 transition">
+              + Event
+            </button>
+          </div>
+        </div>
+
+        <!-- Terminal Output Window -->
+        <div id="logConsole" class="flex-1 bg-surface-950 rounded-xl p-3.5 font-mono-code text-xs overflow-y-auto max-h-72 min-h-60 space-y-1.5 border border-white/5 select-text">
+          <!-- Logs dynamically injected here -->
+        </div>
+
+        <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>Streaming live daemon events</span>
+          </div>
+          <span id="logCounter">12 events logged</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="mt-auto border-t border-white/5 py-4 px-6 text-center text-xs text-slate-500">
+    <p>PulseOps v2.4.0 • Running on Windows • Single-File Zero-Dependency Dashboard</p>
+  </footer>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    // System States
+    let isStressActive = false;
+    let baseCpu = 38.4;
+    let baseRam = 18.2;
+    let baseLatency = 24;
+    let baseNet = 148;
+    let baseRps = 2410;
+
+    // Time Tracking
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('liveClock').innerText = now.toTimeString().split(' ')[0] + ' UTC';
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Chart.js Setup
+    const ctxTelemetry = document.getElementById('telemetryChart').getContext('2d');
+    const timestamps = Array.from({length: 20}, (_, i) => `${20 - i}s ago`);
+    const cpuHistory = [32, 35, 34, 38, 41, 39, 44, 40, 36, 38, 42, 45, 39, 37, 36, 38, 41, 38, 39, 38];
+    const ramHistory = [54, 54, 55, 55, 55, 56, 56, 56, 56, 57, 57, 57, 56, 56, 57, 57, 57, 57, 56, 57];
+    const netHistory = [120, 132, 128, 145, 140, 155, 150, 160, 142, 138, 148, 152, 146, 144, 140, 148, 150, 145, 142, 148];
+
+    const telemetryChart = new Chart(ctxTelemetry, {
+      type: 'line',
+      data: {
+        labels: timestamps,
+        datasets: [
+          {
+            label: 'CPU (%)',
+            data: cpuHistory,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 5
+          },
+          {
+            label: 'RAM (%)',
+            data: ramHistory,
+            borderColor: '#a855f7',
+            backgroundColor: 'transparent',
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 5
+          },
+          {
+            label: 'Net I/O (MB/s)',
+            data: netHistory.map(v => v / 3), // scaled for graph balance
+            borderColor: '#06b6d4',
+            backgroundColor: 'transparent',
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 5
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 600 },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 255, 255, 0.04)' },
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' } }
+          },
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#64748b', font: { size: 10, family: 'JetBrains Mono' }, callback: v => v + '%' }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#171a26',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            titleFont: { family: 'JetBrains Mono' },
+            bodyFont: { family: 'JetBrains Mono' }
+          }
+        }
+      }
+    });
+
+    // Storage Doughnut Chart
+    const ctxStorage = document.getElementById('storageChart').getContext('2d');
+    const storageChart = new Chart(ctxStorage, {
+      type: 'doughnut',
+      data: {
+        labels: ['PostgreSQL DB', 'App Containers', 'WAL Logs', 'Available'],
+        datasets: [{
+          data: [850, 420, 320, 210],
+          backgroundColor: [
+            '#3b82f6',
+            '#a855f7',
+            '#f59e0b',
+            '#334155'
+          ],
+          borderWidth: 0,
+          hoverOffset: 6
+        }]
+      },
+      options: {
+        cutout: '76%',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#171a26',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            callbacks: {
+              label: function(context) {
+                return ` ${context.label}: ${context.raw} GB`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Event Log Stream Data
+    let logs = [
+      { time: '08:42:10', level: 'INFO', svc: 'sys-daemon', msg: 'Cluster node us-east-alpha synchronized with control plane.' },
+      { time: '08:43:22', level: 'INFO', svc: 'pg-pool', msg: 'Postgres connection pool healthy (84 active leases).' },
+      { time: '08:44:05', level: 'SUCCESS', svc: 'cert-mgr', msg: 'Auto-renewed TLS certificate for *.internal.domain.' },
+      { time: '08:44:40', level: 'INFO', svc: 'redis-cache', msg: 'Key eviction rate is nominal (< 0.01%).' },
+      { time: '08:45:12', level: 'WARN', svc: 'worker-pool', msg: 'Queue length briefly crossed 20 items (auto-scaled +2 pods).' },
+      { time: '08:46:00', level: 'INFO', svc: 'api-gw', msg: 'HTTP 2xx response ratio at 99.98% across 14,200 reqs.' }
+    ];
+
+    function getBadgeClass(level) {
+      switch(level) {
+        case 'ERROR': return 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+        case 'WARN': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        case 'SUCCESS': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+        default: return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      }
+    }
+
+    function renderLogs() {
+      const filter = document.getElementById('logFilter').value;
+      const consoleBox = document.getElementById('logConsole');
+      const filtered = filter === 'ALL' ? logs : logs.filter(l => l.level === filter);
+
+      consoleBox.innerHTML = filtered.map(item => `
+        <div class="flex items-start space-x-2 py-0.5 border-b border-white/[0.02]">
+          <span class="text-slate-500 select-none">${item.time}</span>
+          <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold border ${getBadgeClass(item.level)}">${item.level}</span>
+          <span class="text-slate-400 font-semibold">[${item.svc}]</span>
+          <span class="text-slate-200 flex-1">${item.msg}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('logCounter').innerText = `${logs.length} events logged`;
+      consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+
+    function clearLogs() {
+      logs = [];
+      renderLogs();
+    }
+
+    function addLog(level, svc, msg) {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0];
+      logs.push({ time: timeStr, level, svc, msg });
+      if (logs.length > 80) logs.shift();
+      renderLogs();
+    }
+
+    function addManualLog() {
+      addLog('INFO', 'manual-trigger', 'Operator generated manual diagnostic test ping.');
+    }
+
+    renderLogs();
+
+    // Data Refresh Loop
+    function refreshData(manual = false) {
+      if (manual) {
+        const icon = document.getElementById('refreshIcon');
+        icon.classList.add('animate-spin');
+        setTimeout(() => icon.classList.remove('animate-spin'), 600);
+      }
+
+      // Random small jitter or spike state
+      let cpuTarget = isStressActive ? (82 + Math.random() * 12) : (baseCpu + (Math.random() * 6 - 3));
+      let ramTarget = isStressActive ? (27.4 + Math.random() * 1.5) : (baseRam + (Math.random() * 0.8 - 0.4));
+      let netTarget = isStressActive ? (380 + Math.random() * 60) : (baseNet + (Math.random() * 20 - 10));
+      let latencyTarget = isStressActive ? (142 + Math.floor(Math.random() * 40)) : (baseLatency + Math.floor(Math.random() * 6 - 3));
+      let rpsTarget = isStressActive ? (6800 + Math.floor(Math.random() * 800)) : (baseRps + Math.floor(Math.random() * 200 - 100));
+
+      cpuTarget = Math.max(10, Math.min(99, cpuTarget));
+      ramTarget = Math.max(10, Math.min(31.8, ramTarget));
+      latencyTarget = Math.max(8, latencyTarget);
+
+      // Update DOM
+      document.getElementById('cpuValue').innerHTML = `${cpuTarget.toFixed(1)}<span class="text-base text-slate-400 font-normal">%</span>`;
+      document.getElementById('cpuBar').style.width = `${cpuTarget}%`;
+      document.getElementById('cpuTemp').innerText = `${Math.round(45 + (cpuTarget * 0.4))}°C`;
+
+      const cpuBadge = document.getElementById('cpuBadge');
+      if (cpuTarget > 80) {
+        cpuBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/20';
+        cpuBadge.innerText = 'High Load';
+      } else {
+        cpuBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20';
+        cpuBadge.innerText = 'Normal';
+      }
+
+      const ramPct = ((ramTarget / 32) * 100).toFixed(1);
+      document.getElementById('ramValue').innerHTML = `${ramTarget.toFixed(1)}<span class="text-base text-slate-400 font-normal"> / 32 GB</span>`;
+      document.getElementById('ramBar').style.width = `${ramPct}%`;
+      document.getElementById('ramBadge').innerText = `${ramPct}%`;
+
+      document.getElementById('netValue').innerHTML = `${Math.round(netTarget)}<span class="text-base text-slate-400 font-normal"> MB/s</span>`;
+      document.getElementById('netBar').style.width = `${Math.min(100, Math.round((netTarget / 400) * 100))}%`;
+      document.getElementById('netIn').innerText = `${Math.round(netTarget * 0.58)} MB/s`;
+      document.getElementById('netOut').innerText = `${Math.round(netTarget * 0.42)} MB/s`;
+
+      document.getElementById('latencyValue').innerHTML = `${latencyTarget}<span class="text-base text-slate-400 font-normal"> ms</span>`;
+      document.getElementById('latencyBar').style.width = `${Math.min(100, latencyTarget)}%`;
+      document.getElementById('rpsValue').innerText = rpsTarget.toLocaleString();
+
+      const latBadge = document.getElementById('latencyBadge');
+      if (latencyTarget > 100) {
+        latBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/20';
+        latBadge.innerText = 'Elevated';
+        document.getElementById('errRate').innerText = '1.84%';
+        document.getElementById('errRate').className = 'text-rose-400';
+      } else {
+        latBadge.className = 'text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20';
+        latBadge.innerText = 'Fast';
+        document.getElementById('errRate').innerText = '0.02%';
+        document.getElementById('errRate').className = 'text-emerald-400';
+      }
+
+      // Push to Chart.js
+      telemetryChart.data.datasets[0].data.shift();
+      telemetryChart.data.datasets[0].data.push(Math.round(cpuTarget));
+
+      telemetryChart.data.datasets[1].data.shift();
+      telemetryChart.data.datasets[1].data.push(Math.round(ramPct));
+
+      telemetryChart.data.datasets[2].data.shift();
+      telemetryChart.data.datasets[2].data.push(Math.round(netTarget / 4));
+
+      telemetryChart.update();
+
+      // Occasionally add synthetic log if stressed or randomly
+      if (isStressActive && Math.random() > 0.4) {
+        const stressLogs = [
+          { lvl: 'WARN', svc: 'auto-scaler', msg: 'CPU threshold exceeded (>85%). Provisioning 2 compute nodes.' },
+          { lvl: 'WARN', svc: 'ingress-gw', msg: 'Traffic throttle enabled for bucket #94 (rate limit).' },
+          { lvl: 'ERROR', svc: 'payment-svc', msg: 'High thread contention detected on worker thread pool #4.' },
+          { lvl: 'INFO', svc: 'cache-layer', msg: 'Burst buffer activated: 12,000 IOPS absorbed.' }
+        ];
+        const randomItem = stressLogs[Math.floor(Math.random() * stressLogs.length)];
+        addLog(randomItem.lvl, randomItem.svc, randomItem.msg);
+      } else if (Math.random() > 0.75) {
+        const regularLogs = [
+          { lvl: 'INFO', svc: 'audit-log', msg: 'Automated healthcheck sweep passed for all 6 services.' },
+          { lvl: 'INFO', svc: 'dns-resolver', msg: 'DNS cache cleared, 4,110 entries refreshed.' },
+          { lvl: 'SUCCESS', svc: 'backup-agent', msg: 'Incremental snapshot #8942 committed to storage.' }
+        ];
+        const randomItem = regularLogs[Math.floor(Math.random() * regularLogs.length)];
+        addLog(randomItem.lvl, randomItem.svc, randomItem.msg);
+      }
+    }
+
+    setInterval(refreshData, 2000);
+
+    // Stress Test Simulator Function
+    function toggleStressTest() {
+      isStressActive = !isStressActive;
+      const btn = document.getElementById('stressBtn');
+      const workerDot = document.getElementById('workerStatusDot');
+      const workerText = document.getElementById('workerStatusText');
+
+      if (isStressActive) {
+        btn.innerHTML = `<i data-lucide="zap-off" class="w-3.5 h-3.5"></i><span>Stop Stress</span>`;
+        btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 text-white animate-pulse transition-all flex items-center gap-1.5';
+        workerDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping';
+        workerText.innerText = 'Jobs in Queue: 184 (High Pressure)';
+        addLog('WARN', 'chaos-monkey', 'STRESS TEST INITIATED: Injecting 7,000 rps simulated workload spike!');
+      } else {
+        btn.innerHTML = `<i data-lucide="zap" class="w-3.5 h-3.5"></i><span>Simulate Spike</span>`;
+        btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 transition-all flex items-center gap-1.5';
+        workerDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        workerText.innerText = 'Jobs in Queue: 14';
+        addLog('SUCCESS', 'chaos-monkey', 'Stress test terminated. System recovering to baseline metrics.');
+      }
+      lucide.createIcons();
+      refreshData();
+    }
+  </script>
+</body>
+</html>
